@@ -1,0 +1,83 @@
+# Import libraries
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error, mean_squared_error,r2_score
+
+import gradio as gr
+# Load the dataset
+df = pd.read_csv("house_data.csv")  # Make sure this CSV is in your working directory
+
+# Display basic info
+print(df.shape)
+df.head()
+# Check missing values
+print(df.isnull().sum())
+
+# Fill or drop missing values
+df.fillna(method='ffill', inplace=True)
+
+# Encode categorical features
+df = pd.get_dummies(df, drop_first=True)
+
+# Split target and features
+target = 'SalePrice'
+X = df.drop(columns=[target])
+y = df[target]
+
+# Scale numerical features
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+X_train, X_test, y_train, y_test = train_test_split(
+    X_scaled, y, test_size=0.2, random_state=42
+)
+# Linear Regression
+lr_model = LinearRegression()
+lr_model.fit(X_train, y_train)
+lr_pred = lr_model.predict(X_test)
+
+# Random Forest
+rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+rf_model.fit(X_train, y_train)
+rf_pred = rf_model.predict(X_test)
+def evaluate_model(y_test, y_pred, name):
+    print(f"--- {name} Evaluation ---")
+    print("MAE:", mean_absolute_error(y_test, y_pred))
+    print("RMSE:", np.sqrt(mean_squared_error(y_test, y_pred)))
+    print("R² Score:", r2_score(y_test, y_pred))
+    print()
+
+evaluate_model(y_test, lr_pred, "Linear Regression")
+evaluate_model(y_test, rf_pred, "Random Forest")
+# Use original feature columns
+input_cols = X.columns
+
+def predict_house_price(*args):
+    input_data = np.array(args).reshape(1, -1)
+    scaled_data = scaler.transform(input_data)
+    prediction = rf_model.predict(scaled_data)
+    return round(prediction[0], 2)
+
+# Create input fields dynamically based on feature names
+inputs = []
+for col in input_cols:
+    if 'Year' in col or 'Area' in col or 'SF' in col or df[col].dtype != 'uint8':
+        inputs.append(gr.Number(label=col))
+    else:
+        inputs.append(gr.Checkbox(label=col))
+
+output = gr.Number(label=" Predicted House Price (USD)")
+
+gr.Interface(
+    fn=predict_house_price,
+    inputs=inputs,
+    outputs=output,
+    title="House Price Predictor",
+    description="Enter house features to get an accurate price prediction."
+).launch()
